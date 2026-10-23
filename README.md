@@ -1,5 +1,7 @@
 # Sci-PDF Enhanced for Zotero
 
+**中文** | [English](README.en.md)
+
 **让 Zotero 的 PDF 获取更顺手：批量管理镜像地址，支持手动人机验证，并把下载结果直接保存为文献条目的附件。**
 
 本项目由 [tom3410](https://github.com/tom3410) 维护，基于 [syt2/zotero-scipdf](https://github.com/syt2/zotero-scipdf) 改进。保留原项目的 PDF 获取功能，重点优化网址管理、跳转与验证后的下载体验。普通文献优先在后台直接下载；遇到网页验证或无法直接解析的页面时，可在 Zotero 窗口中手动操作，取得 PDF 后自动挂到发起下载的原条目下。
