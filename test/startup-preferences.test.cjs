@@ -51,6 +51,9 @@ async function start({ installed = true, saved = [], legacy = {} } = {}) {
         },
       },
       "./modules/Common": { Common: { async registerPrefs() {} } },
+      "./modules/SciHubFetcher": { SciHubFetcher: { async updateItems() {} } },
+      "./modules/InteractiveBrowser": { InteractiveBrowser: { closeAll() {} } },
+      "./modules/MirrorUpdater": { async refreshMirrorsIfDue() {} },
     },
     {
       addon,

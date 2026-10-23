@@ -12,3 +12,11 @@ popwin-cancelhint = 點擊取消後續下載。已開始的附件匯入可能仍
 popwin-fetchprogress = 文獻 { $item }/{ $items }，鏡像 { $mirror }/{ $mirrors }：{ $host } — { $title }
 popwin-cancelled = 已取消
 popwin-fetchfailed = 下載失敗，請檢查網路、鏡像可用性及除錯日誌
+
+interactive-progress = 等待你在彈出視窗完成驗證或搜尋
+interactive-help = 請在下方網頁完成驗證；如果只顯示首頁，請使用下面的 DOI 手動搜尋。驗證後取得的 PDF 會直接儲存為目前條目的附件，無需選擇儲存位置。儲存受阻可點擊「驗證完成，重試儲存」。關閉視窗取消本批下載。
+interactive-waiting = 等待頁面跳轉、驗證或 PDF 連結……
+interactive-saving = 正在用目前驗證工作階段儲存 PDF……
+interactive-retry = 驗證完成，重試儲存
+interactive-skip = 跳過此鏡像
+interactive-save-failed = PDF 尚未儲存至條目。請重試儲存；如果網頁仍有驗證，請先完成驗證。詳情：{ $error }

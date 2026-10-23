@@ -17,6 +17,7 @@ function load(path, imports = {}, globals = {}) {
   );
   return exports;
 }
+const pdfPage = load("../src/modules/pdfPage.ts", {}, { Zotero: {} });
 const identifiers = load("../src/utils/identifierPatterns.ts");
 const { Utils } = load("../src/utils/utils.ts", {
   "./identifierPatterns": identifiers,
@@ -54,14 +55,17 @@ test("missing DOI still falls back to URL and preserves complete letter suffixes
   entry.getField = (field) => (field === "url" ? `https://doi.org/${doi}` : "");
   assert.deepEqual(Array.from(await Utils.extractDOIs(entry)), [doi]);
 });
-function harness(request) {
+function harness(request, interactive, save) {
   const windows = [],
     calls = [],
     imports = [];
   const ui = {
     ...Utils,
     extractDOIs: Utils.extractDOIs,
-    attachRemotePDF: async (url) => imports.push(url.href),
+    attachRemotePDF: async (url) => {
+      await save?.(url);
+      imports.push(url.href);
+    },
     showPopWin: (title, text, type, closeTime) => {
       const w = {
         title,
@@ -90,6 +94,16 @@ function harness(request) {
           options ? JSON.stringify(options.args) : key,
       },
       "../utils/utils": { Utils: ui },
+      "../utils/prefs": { getPref: () => !!interactive },
+      "./pdfPage": pdfPage,
+      "./InteractiveBrowser": {
+        InteractiveBrowser: {
+          fetch: async (...args) => {
+            if (!interactive) throw new Error("Unexpected popup");
+            return interactive(...args);
+          },
+        },
+      },
       "./CustomResolverManager": {
         CustomResolverManager: {
           shared: {
@@ -130,7 +144,9 @@ const page = (status, found = false) => ({
         ? found
           ? { getAttribute: () => "https://pdf.example/test.pdf" }
           : null
-        : { innerHTML: "Please try to search again using DOI" },
+        : selector === "body"
+          ? { innerHTML: "Please try to search again using DOI" }
+          : null,
   },
 });
 test("502 advances to the next mirror with bounded requests and persistent progress", async () => {
@@ -207,4 +223,139 @@ test("all mirrors explicitly missing the PDF produce the not-found result", asyn
   await h.run([item()]);
   assert.equal(h.calls.length, 2);
   assert.equal(h.windows.at(-1).title, "popwin-pdfnotavaliable");
+});
+
+test("PDF links resolve against the final redirected page URL", async () => {
+  const h = harness(() => ({
+    status: 200,
+    responseURL: "https://new.example/articles/result",
+    responseXML: {
+      querySelector(selector) {
+        return selector === "#pdf"
+          ? { getAttribute: () => "../files/paper.pdf" }
+          : null;
+      },
+    },
+  }));
+  await h.run([item()]);
+  assert.deepEqual(h.imports, ["https://new.example/files/paper.pdf"]);
+});
+test("403 opens a manual verification flow and then saves the result", async () => {
+  let opened = 0;
+  const h = harness(
+    () => page(403),
+    async (url, entry, state, save) => {
+      opened++;
+      await save(
+        new URL("https://verified.example/paper.pdf"),
+        "https://verified.example/article",
+      );
+    },
+  );
+  await h.run([item()]);
+  assert.equal(opened, 1);
+  assert.equal(h.imports.length, 1);
+  assert.equal(h.windows.at(-1).title, "popwin-fetchsuccess");
+});
+test("unrecognized HTML opens the browser instead of reporting PDF absent", async () => {
+  let opened = 0;
+  const h = harness(
+    () => ({ status: 200, responseXML: { querySelector: () => null } }),
+    async (url, entry, state) => {
+      opened++;
+      state.cancelled = true;
+    },
+  );
+  await h.run([item(), item()]);
+  assert.equal(opened, 1);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.windows.at(-1).title, "popwin-cancelled");
+});
+test("a skipped browser is offered only once per article, not for every mirror", async () => {
+  let opened = 0;
+  const h = harness(
+    () => page(403),
+    async () => {
+      opened++;
+      throw new Error("skip");
+    },
+  );
+  await h.run([item(), item()]);
+  assert.equal(opened, 2);
+  assert.equal(h.calls.length, 4);
+});
+test("HTML verification responses are never imported as PDF attachments", async () => {
+  const bytes = Uint8Array.from(
+    Buffer.from("<html>Complete verification</html>"),
+  );
+  let imports = 0;
+  const module = load(
+    "../src/utils/utils.ts",
+    { "./identifierPatterns": identifiers },
+    {
+      Zotero: {
+        HTTP: {
+          request: async (method, url, options) => {
+            assert.equal(
+              options.headers.Referer,
+              "https://final.example/article",
+            );
+            assert.equal(options.headers["User-Agent"], "same-browser-UA");
+            return { status: 200, response: bytes.buffer };
+          },
+        },
+        Attachments: {
+          importFromFile: async () => {
+            imports++;
+          },
+        },
+      },
+    },
+  );
+  await assert.rejects(
+    () =>
+      module.Utils.attachRemotePDF(
+        new URL("https://file.example/paper.pdf"),
+        item(),
+        {
+          pageURL: "https://final.example/article",
+          userAgent: "same-browser-UA",
+          state: { cancelled: false },
+        },
+      ),
+    /non-PDF/,
+  );
+  assert.equal(imports, 0);
+});
+
+test("first successful PDF stops all remaining mirror requests for that article", async () => {
+  const h = harness(() => page(200, true));
+  await h.run([item()]);
+  assert.equal(h.calls.length, 1);
+  assert.equal(new URL(h.calls[0].url).host, "a.example");
+  assert.equal(h.imports.length, 1);
+});
+test("success stops current article mirrors and continues with the next article", async () => {
+  const h = harness(() => page(200, true));
+  await h.run([item("10.1234/first"), item("10.1234/second")]);
+  assert.deepEqual(
+    h.calls.map((c) => c.url),
+    ["https://a.example/10.1234/first", "https://a.example/10.1234/second"],
+  );
+  assert.equal(h.imports.length, 2);
+});
+test("a detected link whose attachment import fails still tries the next mirror", async () => {
+  let attempts = 0;
+  const h = harness(
+    () => page(200, true),
+    undefined,
+    async () => {
+      if (++attempts === 1) throw new Error("Attachment download failed");
+    },
+  );
+  await h.run([item()]);
+  assert.equal(h.calls.length, 2);
+  assert.equal(new URL(h.calls[1].url).host, "b.example");
+  assert.equal(h.imports.length, 1);
+  assert.equal(h.windows.at(-1).title, "popwin-fetchsuccess");
 });

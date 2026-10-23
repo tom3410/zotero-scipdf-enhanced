@@ -12,3 +12,11 @@ popwin-cancelhint = Click to cancel remaining downloads. An attachment import al
 popwin-fetchprogress = Item { $item }/{ $items }, mirror { $mirror }/{ $mirrors }: { $host } — { $title }
 popwin-cancelled = Cancelled
 popwin-fetchfailed = Download failed; check network, mirror availability, and debug output
+
+interactive-progress = Waiting for you to verify or search in the browser window
+interactive-help = Complete verification below. If only a home page appears, search using the DOI shown here. The resulting PDF is saved directly as an attachment to this item, without a Save As dialog. If saving fails, use Retry save. Closing this window cancels the batch.
+interactive-waiting = Waiting for redirects, verification or a PDF link…
+interactive-saving = Saving the PDF with this browser session…
+interactive-retry = Verification complete — Retry save
+interactive-skip = Skip this mirror
+interactive-save-failed = The PDF has not been saved to this item. Retry saving; if the page still requires verification, complete it first. Details: { $error }

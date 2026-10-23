@@ -1,19 +1,38 @@
 <linkset>
   <html:link rel="localization" href="__addonRef__-preferences.ftl" />
 </linkset>
-<!-- Inline handlers run in the window, not the preference script sandbox. -->
+<!-- Keep the upstream XUL pane structure and window-scoped load handler. -->
 <vbox id="zotero-prefpane-__addonRef__" onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })">
   <groupbox>
     <label>
       <html:h2 data-l10n-id="pref-title"></html:h2>
     </label>
-
     <checkbox id="zotero-prefpane-__addonRef__-autoDownload" data-l10n-id="pref-autoDownload" />
-
-    <hbox>
+    <checkbox id="zotero-prefpane-__addonRef__-interactiveDownload" data-l10n-id="pref-interactive-download" />
+    <vbox>
       <html:label for="zotero-prefpane-__addonRef__-scihubUrl" data-l10n-id="pref-scihub-input"></html:label>
-      <html:input type="text" id="zotero-prefpane-__addonRef__-scihubUrl"></html:input>
+      <html:textarea id="zotero-prefpane-__addonRef__-scihubUrl" rows="14" spellcheck="false" wrap="off" aria-describedby="zotero-prefpane-__addonRef__-urlHelp" style="box-sizing: border-box; width: 100%; height: 280px; min-height: 220px; overflow: auto; resize: vertical; font-family: monospace; padding: 8px;"></html:textarea>
+      <html:p id="zotero-prefpane-__addonRef__-urlHelp" data-l10n-id="pref-url-help"></html:p>
+    </vbox>
+    <hbox>
+      <html:button type="button" id="zotero-prefpane-__addonRef__-saveMirrors" data-l10n-id="pref-save"></html:button>
     </hbox>
+  </groupbox>
+  <groupbox>
+    <label>
+      <html:h2 data-l10n-id="pref-source-title"></html:h2>
+    </label>
+    <vbox>
+      <html:label for="zotero-prefpane-__addonRef__-mirrorSource" data-l10n-id="pref-source-label"></html:label>
+      <html:input type="text" id="zotero-prefpane-__addonRef__-mirrorSource" placeholder="https://example.org/scihub" style="box-sizing: border-box; width: 100%;" />
+      <html:p data-l10n-id="pref-source-help"></html:p>
+    </vbox>
+    <hbox>
+      <html:button type="button" id="zotero-prefpane-__addonRef__-fetchMirrors" data-l10n-id="pref-fetch"></html:button>
+    </hbox>
+    <checkbox id="zotero-prefpane-__addonRef__-mirrorAutoUpdate" data-l10n-id="pref-auto-update" />
+    <html:p id="zotero-prefpane-__addonRef__-lastUpdate"></html:p>
+    <html:p id="zotero-prefpane-__addonRef__-status" role="status" aria-live="polite" style="white-space: pre-wrap; overflow-wrap: anywhere;"></html:p>
   </groupbox>
 </vbox>
 <vbox>

@@ -1,4 +1,5 @@
 import { matchDOIs } from "./identifierPatterns";
+import type { DownloadState } from "../modules/InteractiveBrowser";
 
 export class Utils {
   static async extractDOIs(item: Zotero.Item): Promise<string[]> {
@@ -34,7 +35,42 @@ export class Utils {
     return dois;
   }
 
-  static async attachRemotePDF(pdfURL: URL, item: Zotero.Item) {
+  static async attachRemotePDF(
+    pdfURL: URL,
+    item: Zotero.Item,
+    context?: { pageURL: string; userAgent?: string; state: DownloadState },
+  ) {
+    if (context) {
+      const { state, pageURL, userAgent } = context;
+      if (state.cancelled) return;
+      const previousCancel = state.cancelRequest;
+      try {
+        const xhr = await Zotero.HTTP.request("GET", pdfURL.href, {
+          responseType: "arraybuffer",
+          timeout: 60000,
+          errorDelayMax: 0,
+          successCodes: false,
+          headers: {
+            Referer: pageURL,
+            ...(userAgent ? { "User-Agent": userAgent } : {}),
+          },
+          cancellerReceiver: (cancel: () => void) => {
+            state.cancelRequest = cancel;
+            if (state.cancelled) cancel();
+          },
+        });
+        if (state.cancelled) return;
+        if (xhr.status !== 200) throw new Error(`PDF HTTP ${xhr.status}`);
+        await this.attachPDFBytes(
+          new Uint8Array(xhr.response as ArrayBuffer),
+          item,
+          state,
+        );
+        return;
+      } finally {
+        state.cancelRequest = previousCancel;
+      }
+    }
     const filename = pdfURL.pathname.split("/").pop() || null;
     const importOptions = {
       libraryID: item.libraryID,
@@ -50,6 +86,45 @@ export class Utils {
       `Import Options: ${JSON.stringify(importOptions, null, "\t")}`,
     );
     await Zotero.Attachments.importFromURL(importOptions);
+  }
+
+  static async attachPDFBytes(
+    bytes: Uint8Array,
+    item: Zotero.Item,
+    state: DownloadState,
+  ) {
+    if (state.cancelled) return;
+    if (!String.fromCharCode(...bytes.subarray(0, 1024)).includes("%PDF-"))
+      throw new Error(
+        "The server returned a verification page or other non-PDF content",
+      );
+    const directory =
+      await Zotero.Attachments.createTemporaryStorageDirectory();
+    try {
+      // nsIFile appends with the native separator, including Windows Unicode paths.
+      const file = directory.clone();
+      file.append("article.pdf");
+      const path = file.path;
+      await ztoolkit.getGlobal("IOUtils").write(path, bytes);
+      if (state.cancelled) return;
+      await Zotero.Attachments.importFromFile({
+        file: path,
+        libraryID: item.libraryID,
+        parentItemID: item.id,
+        title: String(item.getField("title") || "PDF"),
+        contentType: "application/pdf",
+      });
+    } finally {
+      try {
+        await ztoolkit
+          .getGlobal("IOUtils")
+          .remove(directory.path, { recursive: true, ignoreAbsent: true });
+      } catch (error) {
+        Zotero.logError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
   }
 
   static showPopWin(

@@ -2,9 +2,15 @@ import { getString, initLocale } from "./utils/locale";
 import { registerPrefsScripts } from "./modules/preferenceScript";
 import { createZToolkit } from "./utils/ztoolkit";
 import { getPref, setPref } from "./utils/prefs";
-import { sciHubCustomResolver, presetSciHubCustomResolvers } from "./modules/CustomResolver";
+import {
+  sciHubCustomResolver,
+  presetSciHubCustomResolvers,
+} from "./modules/CustomResolver";
 import { CustomResolverManager } from "./modules/CustomResolverManager";
 import { Common } from "./modules/Common";
+import { SciHubFetcher } from "./modules/SciHubFetcher";
+import { InteractiveBrowser } from "./modules/InteractiveBrowser";
+import { refreshMirrorsIfDue } from "./modules/MirrorUpdater";
 
 async function onStartup() {
   await Promise.all([
@@ -15,7 +21,6 @@ async function onStartup() {
 
   initLocale();
 
-
   if (!getPref("firstInstall")) {
     setPref("firstInstall", true);
     const url = Zotero.Prefs.get("zoteroscihub.scihub_url");
@@ -23,11 +28,13 @@ async function onStartup() {
     if (Zotero.Prefs.get("zoteroscihub.automatic_pdf_download")) {
       autoDownload = true;
     }
-    if (url && typeof url === 'string') {
+    if (url && typeof url === "string") {
       const resolver = sciHubCustomResolver(url, autoDownload);
       CustomResolverManager.shared.appendCustomResolversInZotero([resolver]);
     } else {
-      CustomResolverManager.shared.appendCustomResolversInZotero(presetSciHubCustomResolvers(true));
+      CustomResolverManager.shared.appendCustomResolversInZotero(
+        presetSciHubCustomResolvers(true),
+      );
     }
   } else {
     // Restore saved choices without re-adding defaults or enabling downloads.
@@ -37,6 +44,9 @@ async function onStartup() {
   }
 
   await Common.registerPrefs();
+  addon.api = {
+    fetchPDF: (items: Zotero.Item[]) => SciHubFetcher.updateItems(items, false),
+  };
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -45,6 +55,7 @@ async function onStartup() {
   // Mark initialized as true to confirm plugin loading status
   // outside of the plugin (e.g. scaffold testing process)
   addon.data.initialized = true;
+  void refreshMirrorsIfDue();
 }
 
 async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
@@ -60,6 +71,7 @@ async function onMainWindowUnload(win: Window): Promise<void> {
 }
 
 function onShutdown(): void {
+  InteractiveBrowser.closeAll();
   Common.unregisterMenus();
   ztoolkit.unregisterAll();
   addon.data.dialog?.window?.close();
@@ -68,7 +80,6 @@ function onShutdown(): void {
   // @ts-expect-error - Plugin instance is not typed
   delete Zotero[addon.data.config.addonInstance];
 }
-
 
 /**
  * This function is just an example of dispatcher for Preference UI events.

@@ -8,6 +8,12 @@ declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
       "firstInstall": boolean;
+      "interactiveDownload": boolean;
+      "automaticDownload": boolean;
+      "mirrorSourceURL": string;
+      "mirrorAutoUpdate": boolean;
+      "mirrorLastAttempt": string;
+      "mirrorLastSuccess": string;
     };
   }
 }

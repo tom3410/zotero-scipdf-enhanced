@@ -1,29 +1,72 @@
-# SciPDF For Zotero
+# Sci-PDF Enhanced for Zotero
 
-[![zotero target version](https://img.shields.io/badge/Zotero-7+-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
-[![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
+**让 Zotero 的 PDF 获取更顺手：批量管理镜像地址，支持手动验证，并把下载结果直接保存为文献条目的附件。**
 
-English | [简体中文](doc/README-zhCN.md)
+本项目由 [tom3410](https://github.com/tom3410) 维护，基于 [syt2/zotero-scipdf](https://github.com/syt2/zotero-scipdf) 改进。保留原项目的 PDF 获取功能，重点优化网址管理、跳转与验证后的下载体验。普通文献优先在后台直接下载；遇到网页验证或无法直接解析的页面时，可在 Zotero 窗口中手动操作，取得 PDF 后自动挂到发起下载的原条目下。
 
+> 这是独立维护的增强版，并非原作者发布的官方版本。
 
-# Introduction
-This is a Sci-Hub plugin designed for Zotero 7 and Zotero 8.  
-This plugin utilizes Zotero's built-in [PDF resolvers](https://www.zotero.org/support/kb/custom_pdf_resolvers) feature.  
-It automatically writes Sci-Hub's resolver into the `extensions.zotero.findPDFs.resolvers` field and enabling automatic PDF downloads from Sci-Hub within Zotero.
+## 主要功能
 
-> [Detail code in Zotero](https://github.com/zotero/zotero/blob/5536f8d2bd08ddac9074b9df05b7d205273835e7/chrome/content/zotero/xpcom/attachments.js#L1350)  
-> [Custom PDF resolvers](https://www.zotero.org/support/kb/custom_pdf_resolvers)  
-> [Zotero Chinese user guide](https://zotero-chinese.com/user-guide/plugins/Zotero-scihub.html#操作步骤)  
+- **大尺寸网址编辑框**：支持多行输入、滚动和调整高度，一行一个地址，便于批量添加、修改与删除；兼容旧版分隔格式，保存时去重。
+- **从来源页获取镜像地址**：填写来源页面 URL，点击获取后合并地址，保留已有手动配置；可选择启动时检查更新，每 24 小时最多请求一次。
+- **后台直接下载**：能直接获取 PDF 时不弹出网页窗口，并自动保存到对应文献条目。
+- **手动验证后继续保存**：下载受阻时可打开 Zotero 网页窗口，手动完成验证或搜索 DOI；支持接管该窗口返回的 PDF，包括触发文件下载的 PDF 响应。
+- **自动挂载附件**：验证后取得的 PDF 直接导入原条目，无需选择“另存为”位置。
+- **成功即停止检索**：每篇文献成功保存后，立即停止尝试剩余镜像；批量任务继续处理下一篇。
+- **可取消与跳过**：支持跳过当前手动镜像、重试保存，以及关闭验证窗口取消整批任务。
+- **Windows 路径兼容**：使用系统文件接口处理临时保存路径，支持中文数据目录。
 
-# Usage
-Download and install the [latest release xpi file](https://github.com/syt2/zotero-scipdf/releases/latest/download/sci-pdf.xpi).
+## 安装
 
-- For items missing attachments prior to the installation of the plugin, right-click on the item and click on `Find Full Text`.
-- For newly added items with a `DOI`, if the `Automatically download PDFs` option is enabled in the preferences, Zotero will attempt to download the attachments automatically.
+1. 打开本仓库的 [Releases](https://github.com/tom3410/zotero-scipdf-enhanced/releases)，下载 `.xpi` 安装包，**不要解压 XPI**。如果暂未发布安装包，可按下文从源码构建。
+2. 在 Zotero 中打开 **工具 → 插件（插件管理器）→ 齿轮菜单 → 从文件安装插件**，选择 XPI。
+3. 安装完成后，完全退出 Zotero 并重新启动。
 
-### Add/Remove Sci-Hub Sites
-Upon first installation, the plugin will come pre-configured with some common Sci-Hub sites. If you need to add other Sci-Hub sites or remove existing ones, you can edit them in the plugin's settings. Different sites can be separated by commas `,`.
+增强版沿用原插件 ID，会替换原版并复用已有设置，不能与原版同时启用。自 **8.1.3.8** 起，本仓库构建的安装包使用本仓库的更新地址；从此前安装包切换过来的用户，需要手动安装一次新版。
 
-# FAQs
-- Items missing a `DOI` do not have the "Find Full Text" option and cannot be downloaded via Sci-Hub.
-- Items that already have associated attachments do not have the `Find Full Text` option.
+## 使用方法
+
+1. 在 Zotero 设置中打开 **Sci-PDF / PDF下载** 页面，按行填写镜像网址并保存。
+2. 选中文献条目，右键点击本插件的 **“获取PDF”**。右键菜单中的 **“查找全文”** 是 Zotero 自带入口，不会调用本插件的手动验证窗口。
+3. 插件先尝试后台下载；成功后，PDF 会出现在发起下载的条目下面。
+4. 如果弹出网页窗口，在里面完成验证。如果只显示首页，可使用窗口上方显示的 DOI 手动搜索。
+5. 收到 PDF 并保存成功后，验证窗口自动关闭。如保存失败，可点击 **“验证完成，重试保存”**；点击 **“跳过此镜像”** 会继续尝试其他镜像，关闭窗口会取消本批任务。
+
+如需自动补充镜像，在设置中填写来源页面完整网址，再点击 **“立即获取并添加”**。镜像列表更新和 PDF 下载是两个独立步骤：来源页提取到地址，并不代表该地址一定可用。详细说明见 [增强版使用说明](doc/ENHANCED-zhCN.md)。
+
+## 说明与限制
+
+- 文献需要有可识别的 DOI，站点也需要收录对应全文；插件不能保证每篇文献都能下载。
+- 弹窗并不一定代表人机验证，也可能是网页结构或脚本跳转无法被后台直接识别。
+- 验证需要用户手动完成。外部浏览器的登录、验证状态不会自动共享到 Zotero。
+- 特殊阅读器、`blob:` 文件地址、拒绝内置浏览器的站点可能仍需另外适配。
+- 项目面向 Zotero 7 及更新版本；已在 Linux Zotero 9.0.6 做过针对性运行测试，并根据 Windows 实际反馈修正路径问题，不能保证所有系统与站点组合均已覆盖。
+
+## 从源码构建
+
+需要 Node.js 和 npm。项目依赖版本由 `package-lock.json` 固定。
+
+```sh
+npm ci --ignore-scripts
+npm run test:unit
+npm run build
+npm run test:package
+```
+
+生成的安装包为 `.scaffold/build/sci-pdf-enhanced.xpi`。更新元数据在同一目录的 `update.json` 和 `update-beta.json`。
+
+当前测试覆盖镜像配置、下载队列、成功后停止检索、验证窗口的响应接管、附件导入和 Windows 中文路径等。原生测试需要独立的 Zotero 测试环境，运行说明见 [增强版使用说明](doc/ENHANCED-zhCN.md)。
+
+## 发布与自动更新
+
+- 安装包内的更新地址指向本仓库 `release` 发布中的 `update.json`；预发布版本使用 `update-beta.json`。
+- 版本安装包链接使用标签 **`V版本号`**（大写 V），与现有发布工作流一致。
+- 发布时须同时上传对应版本的 `sci-pdf-enhanced.xpi` 和构建生成的更新元数据；元数据中的文件哈希必须对应实际发布的 XPI。
+- 仅修改源码中的更新地址不会自动创建 GitHub Release；安装包与更新元数据发布后，自动更新服务才可用。
+
+## 致谢与许可证
+
+感谢 [syt2](https://github.com/syt2) 开发原项目 [zotero-scipdf](https://github.com/syt2/zotero-scipdf)，以及 [Zotero Plugin Toolkit](https://github.com/windingwind/zotero-plugin-toolkit) 和相关插件模板项目。
+
+本增强版保留原作者信息，继续采用 **AGPL-3.0-or-later** 许可证。完整条款见 [LICENSE](LICENSE)。问题与建议请提交到[本仓库 Issues](https://github.com/tom3410/zotero-scipdf-enhanced/issues)。

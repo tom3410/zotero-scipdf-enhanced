@@ -11,7 +11,7 @@ export default defineConfig({
     pkg.version.includes("-") ? "update-beta.json" : "update.json"
   }`,
   xpiDownloadLink:
-    "https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi",
+    "https://github.com/{{owner}}/{{repo}}/releases/download/V{{version}}/{{xpiName}}.xpi",
 
   build: {
     assets: ["addon/**/*.*"],
@@ -42,10 +42,14 @@ export default defineConfig({
     bumpp: {
       commit: "chore(publish): release V%s",
       tag: "V%s",
-    }
+    },
   },
 
   test: {
+    entries:
+      process.env.SCIPDF_TEST_CAPTURE_ONLY === "1"
+        ? ["test/native-capture"]
+        : ["test"],
     waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.initialized`,
   },
 

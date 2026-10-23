@@ -1,6 +1,9 @@
 import { getString } from "../utils/locale";
 import { Utils } from "../utils/utils";
 import { CustomResolverManager } from "./CustomResolverManager";
+import { getPref } from "../utils/prefs";
+import { InteractiveBrowser, DownloadState } from "./InteractiveBrowser";
+import { browserUserAgent, findPDFURL, pdfExplicitlyMissing } from "./pdfPage";
 
 class PDFNotFoundError extends Error {
   constructor(message: string) {
@@ -11,11 +14,6 @@ class PDFNotFoundError extends Error {
 }
 
 export class SciHubFetcher {
-  private static readonly pdfNotAvailableRegexes = [
-    /Please try to search again using DOI/im,
-    /статья не найдена в базе/im,
-  ];
-
   static async updateItems(
     items: Zotero.Item[],
     skipIfExistPDF: boolean = true,
@@ -39,7 +37,7 @@ export class SciHubFetcher {
       return;
     }
 
-    const state = {
+    const state: DownloadState = {
       cancelled: false,
       cancelRequest: undefined as (() => void) | undefined,
     };
@@ -47,6 +45,7 @@ export class SciHubFetcher {
     const throttledHosts = new Set<string>();
     for (const [itemIndex, item] of filtered.entries()) {
       if (state.cancelled) break;
+      state.interactiveAttempted = false;
       const scihubUrls = await this.buildSciHubURLs(item);
       if (!scihubUrls.length) {
         Utils.showPopWin(
@@ -63,6 +62,11 @@ export class SciHubFetcher {
         0,
       );
       win.addDescription(getString("popwin-cancelhint"));
+      state.onInteractive = () =>
+        win.changeLine({
+          text: getString("interactive-progress"),
+          progress: 0,
+        });
       const close = win.win.close.bind(win.win);
       // Zotero's close-on-click calls this method. Programmatic cleanup uses close directly.
       win.win.close = () => {
@@ -95,6 +99,8 @@ export class SciHubFetcher {
           try {
             await this.fetchPDF(scihubUrl, item, state);
             success = !state.cancelled;
+            // A completed attachment import ends this article's search,
+            // including all remaining DOI candidates and mirror URLs.
             break;
           } catch (error) {
             if (state.cancelled) break;
@@ -160,55 +166,66 @@ export class SciHubFetcher {
   private static async fetchPDF(
     scihubUrl: URL,
     item: Zotero.Item,
-    state: { cancelled: boolean; cancelRequest?: () => void },
+    state: DownloadState,
   ) {
+    const userAgent = browserUserAgent();
     const xhr = await Zotero.HTTP.request("GET", scihubUrl.href, {
       responseType: "document",
       timeout: 15000,
       errorDelayMax: 0,
-      // Handle status codes ourselves, avoiding automatic Retry-After waits on Z7 too.
       successCodes: false,
       cancellerReceiver: (cancel: () => void) => {
         state.cancelRequest = cancel;
         if (state.cancelled) cancel();
       },
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 11_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
-      },
+      headers: userAgent ? { "User-Agent": userAgent } : {},
     });
     state.cancelRequest = undefined;
     if (state.cancelled) return;
-    if (xhr.status !== 200) {
-      throw Object.assign(new Error(`HTTP ${xhr.status} ${xhr.statusText}`), {
-        status: xhr.status,
-      });
+    const pageURL = xhr.responseURL || scihubUrl.href;
+    Zotero.debug(`[Sci-PDF] Page HTTP ${xhr.status}: ${pageURL}`);
+    const pdf =
+      xhr.status === 200 ? findPDFURL(xhr.responseXML, pageURL) : undefined;
+    let failure: unknown = Object.assign(
+      new Error(`HTTP ${xhr.status} ${xhr.statusText}`),
+      { status: xhr.status },
+    );
+    if (pdf) {
+      try {
+        // Preserve the established Zotero attachment importer for ordinary downloads.
+        // Interactive retries below use the verified session and PDF validation.
+        await Utils.attachRemotePDF(pdf, item);
+        return;
+      } catch (error) {
+        failure = error;
+      }
+    } else if (xhr.status === 200 && pdfExplicitlyMissing(xhr.responseXML)) {
+      throw new PDFNotFoundError(
+        "The site explicitly reported that this DOI was not found",
+      );
     }
-    const rawPDFUrl = xhr.responseXML
-      ?.querySelector("#pdf")
-      ?.getAttribute("src");
-    const body = xhr.responseXML?.querySelector("body");
-
-    if (xhr.status === 200 && rawPDFUrl) {
-      // new URL() handles absolute, protocol-relative, root-relative,
-      // and relative paths correctly using scihubUrl as the base.
-      const pdfUrl = new URL(rawPDFUrl, scihubUrl.href);
-      pdfUrl.protocol = "https:";
-      await Utils.attachRemotePDF(pdfUrl, item);
-    } else if (xhr.status === 200 && this.pdfNotAvailable(body)) {
-      ztoolkit.log(`scihub: PDF is not available at the moment "${scihubUrl}"`);
-      throw new PDFNotFoundError(`PDF is not available: ${scihubUrl}`);
-    } else {
-      ztoolkit.log(`scihub: failed to fetch PDF from "${scihubUrl}"`);
-      throw new Error(xhr.statusText);
+    const mayNeedBrowser =
+      xhr.status === 200 || xhr.status === 403 || xhr.status === 503;
+    if (
+      mayNeedBrowser &&
+      getPref("interactiveDownload") !== false &&
+      !state.interactiveAttempted
+    ) {
+      state.interactiveAttempted = true;
+      await InteractiveBrowser.fetch(
+        scihubUrl,
+        item,
+        state,
+        async (url, browserPageURL) => {
+          await Utils.attachRemotePDF(url, item, {
+            pageURL: browserPageURL,
+            userAgent,
+            state,
+          });
+        },
+      );
+      return;
     }
-  }
-
-  private static pdfNotAvailable(body?: Element | null): boolean {
-    const innerHTML = (body as HTMLElement)?.innerHTML as string | undefined;
-    if (!innerHTML || innerHTML.trim() === "") {
-      return true;
-    }
-    return this.pdfNotAvailableRegexes.some((regex) => regex.test(innerHTML));
+    throw failure;
   }
 }
