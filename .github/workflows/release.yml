@@ -1,21 +1,104 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - V**
+    branches:
+      - main
+    paths:
+      - .github/workflows/release.yml
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
-  create-release:
-    uses: zotero-plugin-dev/workflows/.github/workflows/release-plugin.yml@main
-    # You can customize any of the inputs here.
-    # If you omit an input, its default value will be used.
-    with:
-      build: "npm run build"
-      release: "npm run release"
-    secrets: inherit
+  publish:
+    if: >-
+      github.repository == 'tom3410/zotero-scipdf-enhanced' &&
+      (github.event_name == 'workflow_dispatch' ||
+       startsWith(github.ref, 'refs/tags/V') ||
+       github.event.head_commit.message == 'chore: publish V8.1.3.8')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Validate and build
+        run: |
+          npm run test:unit
+          npm run build
+          npm run test:package
+      - name: Publish installation package and update metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scipdf_version="$(node -p "require('./package.json').version")"
+          if [[ ! "$scipdf_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::This workflow publishes stable four-part versions only."
+            exit 1
+          fi
+          scipdf_tag="V${scipdf_version}"
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$scipdf_tag" ]]; then
+            echo "::error::Release tag does not match package.json."
+            exit 1
+          fi
+          if gh release view "$scipdf_tag" >/dev/null 2>&1; then
+            echo "::error::This version is already released. Bump the version before publishing again."
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          ## Sci-PDF Enhanced
+
+          基于 syt2/zotero-scipdf 的增强版，由 tom3410 维护，沿用 AGPL-3.0-or-later 许可证。
+
+          - 支持大尺寸、多行、可滚动的镜像网址编辑框。
+          - 支持从指定来源页提取并合并镜像地址。
+          - 优先后台下载；受阻时可手动完成网页验证，PDF 自动保存为原条目的附件。
+          - 每篇文献成功保存后停止检索剩余镜像。
+          - 修复 Windows 中文目录下的临时文件路径处理。
+          - 安装包、更新元数据和问题反馈均指向本维护仓库。
+
+          ### 安装
+          下载下方 `sci-pdf-enhanced.xpi`，在 Zotero 插件管理器中从文件安装，随后完全退出并重新启动 Zotero。首次从此前版本切换时需手动安装一次，以更新自动更新来源。
+
+          验证网页仍需用户手动操作；站点收录情况和网页兼容性会影响下载结果。源码与许可证随本版本标签提供。
+          NOTES
+          scipdf_release_args=()
+          if gh api repos/{owner}/{repo}/git/ref/tags/"$scipdf_tag" >/dev/null 2>&1; then
+            scipdf_release_args+=(--verify-tag)
+          else
+            scipdf_release_args+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$scipdf_tag" \
+            .scaffold/build/sci-pdf-enhanced.xpi \
+            .scaffold/build/update.json \
+            .scaffold/build/update-beta.json \
+            "${scipdf_release_args[@]}" \
+            --title "Sci-PDF Enhanced ${scipdf_version}" \
+            --notes-file release-notes.md \
+            --latest
+          if gh release view release >/dev/null 2>&1; then
+            gh release upload release .scaffold/build/update.json .scaffold/build/update-beta.json --clobber
+          else
+            gh release create release \
+              .scaffold/build/update.json \
+              .scaffold/build/update-beta.json \
+              --target "$GITHUB_SHA" \
+              --title "Automatic update metadata" \
+              --notes "Zotero update metadata for the current stable enhanced build. Download the versioned release for installation." \
+              --prerelease
+          fi
